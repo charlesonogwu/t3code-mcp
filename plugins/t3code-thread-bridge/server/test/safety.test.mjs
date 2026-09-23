@@ -11,7 +11,7 @@ test("messages queue after the active turn by default", () => {
   assert.equal(resolveDeliveryMode("immediate"), "immediate");
 });
 
-test("token file must be private", () => {
+test("token file privacy is enforced where POSIX modes are available", () => {
   const directory = mkdtempSync(join(tmpdir(), "t3-bridge-test-"));
   const tokenFile = join(directory, "token");
   const oldToken = process.env.T3_TOKEN;
@@ -20,8 +20,12 @@ test("token file must be private", () => {
     delete process.env.T3_TOKEN;
     process.env.T3_TOKEN_FILE = tokenFile;
     writeFileSync(tokenFile, "secret-token\n", { mode: 0o644 });
-    assert.throws(() => loadToken(), ConfigError);
-    chmodSync(tokenFile, 0o600);
+    if (process.platform === "win32") {
+      assert.equal(loadToken(), "secret-token");
+    } else {
+      assert.throws(() => loadToken(), ConfigError);
+      chmodSync(tokenFile, 0o600);
+    }
     assert.equal(loadToken(), "secret-token");
   } finally {
     if (oldToken === undefined) delete process.env.T3_TOKEN;
