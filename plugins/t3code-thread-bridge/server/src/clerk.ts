@@ -125,6 +125,7 @@ function decryptChromiumValue(stored: string, key: Buffer): string {
 
 function runWindowsDpapi(operation: "Protect" | "Unprotect", value: Buffer): Buffer {
   const script =
+    "Add-Type -AssemblyName System.Security;" +
     "$b=[Convert]::FromBase64String([Environment]::GetEnvironmentVariable('T3_BRIDGE_DPAPI_INPUT'));" +
     `$p=[System.Security.Cryptography.ProtectedData]::${operation}($b,$null,[System.Security.Cryptography.DataProtectionScope]::CurrentUser);` +
     "[Console]::Out.Write([Convert]::ToBase64String($p))";
