@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "t3code-thread-bridge": {
+      "command": "node",
+      "args": ["./server/dist/index.js"],
+      "cwd": "."
+    }
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "name": "t3code-tools",
+  "interface": {
+    "displayName": "T3code Tools"
+  },
+  "plugins": [
+    {
+      "name": "t3code-thread-bridge",
+      "source": {
+        "source": "local",
+        "path": "./plugins/t3code-thread-bridge"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

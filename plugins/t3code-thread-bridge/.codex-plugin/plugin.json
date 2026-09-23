@@ -1,0 +1,34 @@
+{
+  "name": "t3code-thread-bridge",
+  "version": "0.2.0",
+  "description": "Inspect and message T3 Code threads across local and T3 Connect environments.",
+  "author": {
+    "name": "ThomasCrund"
+  },
+  "repository": "https://github.com/thomascrund/t3code-mcp",
+  "keywords": [
+    "t3-code",
+    "t3-connect",
+    "threads",
+    "messages",
+    "remote"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "T3 Code Thread Bridge",
+    "shortDescription": "Message threads across all your T3 Code devices.",
+    "longDescription": "Discovers this device and every environment linked through T3 Connect. It can find and inspect threads across computers, then route follow-up messages securely to the device that owns each thread.",
+    "developerName": "ThomasCrund",
+    "category": "Productivity",
+    "capabilities": [
+      "Interactive",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "List my T3 Code environments and recent threads.",
+      "Read a T3 Code thread I identify.",
+      "Send a queued follow-up to a T3 Code thread."
+    ]
+  },
+  "mcpServers": "./.mcp.json"
+}
