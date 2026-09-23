@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, pbkdf2Sync } from "node:crypto";
+import { createCipheriv, createDecipheriv, pbkdf2Sync, randomBytes } from "node:crypto";
 import {
   chmodSync,
   existsSync,
@@ -18,6 +18,9 @@ const CLERK_ORIGIN = "https://clerk.t3.codes";
 const CLERK_QUERY =
   "_is_native=1&_electron_sdk_version=0.0.44&_clerk_js_version=6.32.1";
 const TOKEN_KEY = "__clerk_client_jwt";
+const CHROMIUM_OS_CRYPT_PREFIX = "v10";
+const OS_CRYPT_NONCE_BYTES = 12;
+const OS_CRYPT_TAG_BYTES = 16;
 
 interface TokenStore {
   [TOKEN_KEY]?: string;
@@ -120,24 +123,101 @@ function decryptChromiumValue(stored: string, key: Buffer): string {
   }
 }
 
+function runWindowsDpapi(operation: "Protect" | "Unprotect", value: Buffer): Buffer {
+  const script =
+    "$b=[Convert]::FromBase64String($args[0]);" +
+    `$p=[Security.Cryptography.ProtectedData]::${operation}($b,$null,[Security.Cryptography.DataProtectionScope]::CurrentUser);` +
+    "[Console]::Out.Write([Convert]::ToBase64String($p))";
+  try {
+    const output = execFileSync(
+      "powershell.exe",
+      ["-NoProfile", "-NonInteractive", "-Command", script, value.toString("base64")],
+      { stdio: ["ignore", "pipe", "ignore"], encoding: "utf8" },
+    );
+    return Buffer.from(output.trim(), "base64");
+  } catch {
+    throw new ConfigError(
+      `Could not ${operation === "Protect" ? "encrypt" : "decrypt"} the signed-in T3 Code desktop session with DPAPI.`,
+    );
+  }
+}
+
+function windowsLocalStatePath(): string {
+  if (process.env.T3_CHROMIUM_LOCAL_STATE) return process.env.T3_CHROMIUM_LOCAL_STATE;
+  const appData = process.env.APPDATA ?? join(homedir(), "AppData", "Roaming");
+  return join(appData, "t3code", "Local State");
+}
+
+function windowsOsCryptKey(): Buffer {
+  const path = windowsLocalStatePath();
+  validateStore(path);
+  const state = JSON.parse(readFileSync(path, "utf8")) as {
+    os_crypt?: { encrypted_key?: unknown };
+  };
+  const encoded = state.os_crypt?.encrypted_key;
+  if (typeof encoded !== "string") {
+    throw new ConfigError(`T3 Code Local State has no OSCrypt key: ${path}`);
+  }
+  const wrapped = Buffer.from(encoded, "base64");
+  if (wrapped.subarray(0, 5).toString("ascii") !== "DPAPI") {
+    throw new ConfigError("T3 Code Local State uses an unsupported OSCrypt key format.");
+  }
+  const key = runWindowsDpapi("Unprotect", wrapped.subarray(5));
+  if (key.length !== 32) {
+    throw new ConfigError("T3 Code Local State returned an invalid OSCrypt key.");
+  }
+  return key;
+}
+
+export function decryptWindowsOsCryptValue(value: Buffer, key: Buffer): string {
+  if (value.subarray(0, 3).toString("ascii") !== CHROMIUM_OS_CRYPT_PREFIX) {
+    throw new ConfigError("T3 Code session storage uses an unsupported OSCrypt version.");
+  }
+  if (value.length <= 3 + OS_CRYPT_NONCE_BYTES + OS_CRYPT_TAG_BYTES) {
+    throw new ConfigError("T3 Code session storage contains an invalid OSCrypt value.");
+  }
+  const nonceStart = 3;
+  const ciphertextStart = nonceStart + OS_CRYPT_NONCE_BYTES;
+  const tagStart = value.length - OS_CRYPT_TAG_BYTES;
+  try {
+    const decipher = createDecipheriv(
+      "aes-256-gcm",
+      key,
+      value.subarray(nonceStart, ciphertextStart),
+    );
+    decipher.setAuthTag(value.subarray(tagStart));
+    return Buffer.concat([
+      decipher.update(value.subarray(ciphertextStart, tagStart)),
+      decipher.final(),
+    ]).toString("utf8");
+  } catch {
+    throw new ConfigError("Could not decrypt the signed-in T3 Code OSCrypt session.");
+  }
+}
+
+export function encryptWindowsOsCryptValue(value: string, key: Buffer): Buffer {
+  if (key.length !== 32) throw new ConfigError("T3 Code OSCrypt key must be 32 bytes.");
+  const nonce = randomBytes(OS_CRYPT_NONCE_BYTES);
+  const cipher = createCipheriv("aes-256-gcm", key, nonce);
+  const ciphertext = Buffer.concat([cipher.update(value, "utf8"), cipher.final()]);
+  return Buffer.concat([
+    Buffer.from(CHROMIUM_OS_CRYPT_PREFIX),
+    nonce,
+    ciphertext,
+    cipher.getAuthTag(),
+  ]);
+}
+
 function decryptWindowsValue(stored: string): string {
   if (stored.startsWith("raw:")) return stored.slice(4);
   if (!stored.startsWith("enc:")) {
     throw new ConfigError("T3 Code session storage has an unsupported format.");
   }
-  const script =
-    "$b=[Convert]::FromBase64String($args[0]);" +
-    "$p=[Security.Cryptography.ProtectedData]::Unprotect($b,$null,[Security.Cryptography.DataProtectionScope]::CurrentUser);" +
-    "[Console]::Out.Write([Text.Encoding]::UTF8.GetString($p))";
-  try {
-    return execFileSync(
-      "powershell.exe",
-      ["-NoProfile", "-NonInteractive", "-Command", script, stored.slice(4)],
-      { stdio: ["ignore", "pipe", "ignore"], encoding: "utf8" },
-    );
-  } catch {
-    throw new ConfigError("Could not decrypt the signed-in T3 Code desktop session with DPAPI.");
+  const value = Buffer.from(stored.slice(4), "base64");
+  if (value.subarray(0, 3).toString("ascii") === CHROMIUM_OS_CRYPT_PREFIX) {
+    return decryptWindowsOsCryptValue(value, windowsOsCryptKey());
   }
+  return runWindowsDpapi("Unprotect", value).toString("utf8");
 }
 
 function encryptChromiumValue(value: string, key: Buffer): string {
@@ -150,20 +230,7 @@ function encryptChromiumValue(value: string, key: Buffer): string {
 }
 
 function encryptWindowsValue(value: string): string {
-  const script =
-    "$b=[Text.Encoding]::UTF8.GetBytes($args[0]);" +
-    "$p=[Security.Cryptography.ProtectedData]::Protect($b,$null,[Security.Cryptography.DataProtectionScope]::CurrentUser);" +
-    "[Console]::Out.Write([Convert]::ToBase64String($p))";
-  try {
-    const encrypted = execFileSync(
-      "powershell.exe",
-      ["-NoProfile", "-NonInteractive", "-Command", script, value],
-      { stdio: ["ignore", "pipe", "ignore"], encoding: "utf8" },
-    );
-    return `enc:${encrypted}`;
-  } catch {
-    throw new ConfigError("Could not update the signed-in T3 Code desktop session with DPAPI.");
-  }
+  return `enc:${encryptWindowsOsCryptValue(value, windowsOsCryptKey()).toString("base64")}`;
 }
 
 function tokenExpiry(token: string): number | undefined {

@@ -44,6 +44,7 @@ Env:
   T3_ORIGIN       override T3 server origin (default: ~/.t3/userdata/server-runtime.json)
   T3_CONNECT_TOKEN_FILE  override the existing T3 Connect CLI login file
   T3_CLERK_TOKEN_FILE  override T3 Code desktop's encrypted session store
+  T3_CHROMIUM_LOCAL_STATE  override T3 Code's Windows OSCrypt Local State file
   T3_CONNECT_SESSION_TOKEN_FILE  private file containing a t3-relay session JWT
   T3_CONNECT_DPOP_KEY_FILE  override the bridge's private DPoP key file
   MCP_HTTP_TOKEN  bearer token clients must present in --http mode`,
