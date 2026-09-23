@@ -8,7 +8,7 @@ on every online environment linked through the same T3 Connect account.
 ## Install
 
 ```bash
-git clone https://github.com/ThomasCrund/t3code-mcp.git
+git clone https://github.com/charlesonogwu/t3code-mcp.git
 cd t3code-mcp/plugins/t3code-thread-bridge/server
 npm ci
 npm run build

@@ -9,7 +9,7 @@ Clone the marketplace repository, build the plugin's MCP server, then add the ma
 plugin to Codex:
 
 ```bash
-git clone https://github.com/ThomasCrund/t3code-mcp.git
+git clone https://github.com/charlesonogwu/t3code-mcp.git
 cd t3code-mcp/plugins/t3code-thread-bridge/server
 npm ci
 npm run build
