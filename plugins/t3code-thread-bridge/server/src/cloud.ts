@@ -218,10 +218,24 @@ export class T3ConnectClient {
   }
 
   async listEnvironments(): Promise<RelayEnvironment[]> {
-    const token = await this.credential();
+    let accessToken: string;
+    try {
+      accessToken = (await this.credential()).accessToken;
+    } catch (credentialError) {
+      try {
+        accessToken = await this.desktopSession.relaySessionToken();
+      } catch (sessionError) {
+        const credentialMessage =
+          credentialError instanceof Error ? credentialError.message : String(credentialError);
+        const sessionMessage = sessionError instanceof Error ? sessionError.message : String(sessionError);
+        throw new T3ConnectError(
+          `Could not authorize T3 Connect discovery. CLI login: ${credentialMessage} Desktop session: ${sessionMessage}`,
+        );
+      }
+    }
     const response = await fetchJson<{ environments?: RelayEnvironment[] }>(
       `${this.relayUrl}/v1/environments`,
-      { headers: { authorization: `Bearer ${token.accessToken}` } },
+      { headers: { authorization: `Bearer ${accessToken}` } },
       "Listing T3 Connect environments",
     );
     if (!Array.isArray(response.environments)) {
