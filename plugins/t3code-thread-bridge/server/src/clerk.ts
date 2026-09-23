@@ -125,14 +125,18 @@ function decryptChromiumValue(stored: string, key: Buffer): string {
 
 function runWindowsDpapi(operation: "Protect" | "Unprotect", value: Buffer): Buffer {
   const script =
-    "$b=[Convert]::FromBase64String($args[0]);" +
+    "$b=[Convert]::FromBase64String([Environment]::GetEnvironmentVariable('T3_BRIDGE_DPAPI_INPUT'));" +
     `$p=[Security.Cryptography.ProtectedData]::${operation}($b,$null,[Security.Cryptography.DataProtectionScope]::CurrentUser);` +
     "[Console]::Out.Write([Convert]::ToBase64String($p))";
   try {
     const output = execFileSync(
       "powershell.exe",
-      ["-NoProfile", "-NonInteractive", "-Command", script, value.toString("base64")],
-      { stdio: ["ignore", "pipe", "ignore"], encoding: "utf8" },
+      ["-NoProfile", "-NonInteractive", "-Command", script],
+      {
+        stdio: ["ignore", "pipe", "ignore"],
+        encoding: "utf8",
+        env: { ...process.env, T3_BRIDGE_DPAPI_INPUT: value.toString("base64") },
+      },
     );
     return Buffer.from(output.trim(), "base64");
   } catch {
